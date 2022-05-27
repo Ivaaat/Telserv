@@ -1,13 +1,12 @@
 from subprocess import check_output
 import telebot
-from telebot import types #Добавляем импорт кнопок
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, BotCommand, ReplyKeyboardRemove
 import time
 from telebot.handler_backends import State, StatesGroup
 from config import TOKEN, msg_nahui, user_id, send_messages
-import pymongo
 from pymongo import MongoClient
 import datetime
+
 
 bot = telebot.TeleBot(TOKEN)
 
