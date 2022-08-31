@@ -5,10 +5,14 @@ import time
 from telebot.handler_backends import State, StatesGroup
 from config import TOKEN, msg_nahui, user_id, send_messages
 from pymongo import MongoClient
+import pymongo
 import datetime
-
+from MyDataBase import MyBaseDB
 
 bot = telebot.TeleBot(TOKEN)
+
+base = MyBaseDB()
+
 
 client = MongoClient()
 db = client.Telserv #База данных
@@ -17,7 +21,11 @@ vpn= db.vpn1 #Коллекция
 @bot.message_handler(commands=['start'])
 def start (message) :
     if (user_id == message.chat.id): #проверяем, что пишет именно владелец
-        msg = "Добро пожаловать " + message.from_user.first_name +  " \n\nЧто здесь можно сделать:\n\n /vpn - Создать/Удалить клиент OpenVPN\n\n /user - Список пользователей\n\n Команды к серверу - Выполнение команд"
+        msg = f'''Добро пожаловать {message.from_user.first_name}\n
+        Что здесь можно сделать:\n 
+        /vpn - Создать/Удалить клиент OpenVPN\n
+        /user - Список пользователей\n
+        Команды к серверу - Выполнение команд'''
         bot.set_my_commands(commands=[BotCommand("vpn", "Create VPN"), BotCommand("user", "List of users")])
         bot.delete_message(message.from_user.id, message.message_id-1)
         bot.send_message(message.from_user.id,msg)
@@ -27,7 +35,7 @@ def start (message) :
 
 @bot.message_handler(regexp="del")
 def delmes (message) :
-     bot.delete_message(message.chat.id,message.message_id-1)
+    bot.delete_message(message.chat.id,message.message_id-1)
 
 #mongodb
 def MongoTelservDB (numb, messg, id_name):
@@ -42,6 +50,17 @@ def users(message):
     markup = telebot.types.ReplyKeyboardRemove()
     bot.send_message(message.from_user.id, "Remove Keyboard", reply_markup=markup)
 
+@bot.message_handler(regexp="find")
+def finddb (message) :
+    userslist = ''
+    for x in vpn.find().sort('Title', -1):
+        print (x)
+        number = x['Number']
+        name = x['Name']
+        create = x["Create"]
+        #date = x["date"]
+        userslist +=' ' + str(number)+ ')        ' +  str(name)  + create.rjust(25)+'\n'
+    bot.send_message(message.chat.id, userslist)
 
 #@bot.message_handler(regexp="user")
 def users1(message):
@@ -54,18 +73,10 @@ def users1(message):
         userslist +='     '  + str(number)+ '              ' +  str(name) + '       ' + str(create)+'\n'
     bot.send_message(message.chat.id, userslist)
 
-bot.register_message_handler(users1, commands=['user'])
-
-def users():
-    userslist = 'Нужно выбрать номер клиента:\n'
-    for x in vpn.find():
-        number = x['Number']
-        name = x['Name']
-        create = x["Create"]
-        #date = x["date"]
-        userslist += str(number)+ ' ' +  str(name) + ' ' + str(create)+'\n'
-    return userslist
-
+#bot.register_message_handler(users1, commands=['user'])
+@bot.message_handler(commands=["user"])
+def list(message):
+     bot.send_message(message.chat.id, base.open())
 
 #Создание кнопок под сообщением
 @bot.message_handler(commands=["vpn"])
@@ -102,14 +113,6 @@ def callback_function3(calb):
      bot.answer_callback_query(callback_query_id = calb.id)
 
 
-def keyb_markup ():
-    #return types.ReplyKeyboardMarkup(markup = [[types.KeyboardButton("Выход")]])
-        markup = ReplyKeyboardMarkup(resize_keyboard=True)
-        btn1 = KeyboardButton("Выход")
-        markup.add(btn1)
-        return markup        
-
-
 #Создание конфиги на сервере
 def talk(message):
       text = message.text
@@ -121,7 +124,7 @@ def talk(message):
              bot.register_next_step_handler(msg, talk)
              return
       else :
-             path_to_create = "sed '3c\export CLIENT="+'"'+text+'"'+"' ./script.sh >./scr.sh | sudo ./scr.sh"
+             path_to_create = f'''sed '3c\export CLIENT="{text}"' ./script.sh >./scr.sh | sudo ./scr.sh'''
              res = check_output(path_to_create, shell = True, universal_newlines = True)
              res = "another name." in  res
              if res :
@@ -129,9 +132,10 @@ def talk(message):
                    msg = bot.send_message(chat_id, send_messages1[:28])
                    bot.register_next_step_handler(msg, talk)
                    return
-             doc= open('./'+text+'.ovpn','rb')
+             doc= open(f'./{text}.ovpn','rb')
              Number = vpn.count_documents({})+1
              MongoTelservDB (Number, text, message.from_user.first_name)
+             base.create(text, message.from_user.first_name)
              bot.set_my_commands(
                                  commands=[
                                           BotCommand("vpn", "Create VPN"),
@@ -160,29 +164,23 @@ def deltalk(message):
             bot.register_next_step_handler(msg, deltalk)
             return
           result = vpn.delete_one ({"Number" :str(text)})
-          delClient = "sed -e '4d; y/1/2/; 3c\export CLIENTNUMBER=" + '"' + text + '"' + "'  script.sh >./scr.sh | sudo ./scr.sh"
+          #delClient = "sed -e '4d; y/1/2/; 3c\export CLIENTNUMBER=" + '"' + text + '"' + "'  script.sh >./scr.sh | sudo ./scr.sh"
+          delClient = f'''sed -e '4d; y/1/2/; 3c\export CLIENTNUMBER="{text}"'  script.sh >./scr.sh | sudo ./scr.sh'''
           check_output(delClient, shell = True)
+          base.update(int(text))
           bot.delete_message(chat_id, message.message_id-1)
-          bot.send_message(chat_id, "Клиент " + text + " удалён", reply_markup = ReplyKeyboardRemove())
+          bot.send_message(chat_id, f"Клиент {text} удалён", reply_markup = ReplyKeyboardRemove())
 
 
 #Функция проверки ввода только латиницы
 def check_en (check_test):
       if  len(check_test)>6 :
           return False
-      char_en = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ "
-      i = 0
-      while i <= len(check_test)-1:
-          j = 0
-          while j <= len(char_en)-1:
-              if check_test [i] == char_en[j]:
-                 break
-              j+=1
-              if j == (len(char_en)-1) :
-                 return False
-          i+=1
+      char_en = "abcdefghijklmnopqrstuvwxyz"
+      for i in check_test.lower():
+        if i not in char_en.lower():
+          return False
       return True
-
 
 #Произвольная команда на сервер
 @bot.message_handler(content_types = ["text"])
