@@ -9,7 +9,6 @@ import pymongo
 import datetime
 from MyDataBase import MyBaseDB
 
-
 bot = telebot.TeleBot(TOKEN)
 
 base = MyBaseDB()
