@@ -6,6 +6,7 @@ from config import TOKEN, user_id, users_command
 import os
 
 bot = telebot.TeleBot(TOKEN)
+
  
 def delete_mess(message):
     for i in range(20):
